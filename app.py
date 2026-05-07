@@ -5,12 +5,25 @@ import os
 from PIL import Image
 
 # -------------------------
-# MOBILE CONFIG
+# MUST BE FIRST STREAMLIT CALL
 # -------------------------
 st.set_page_config(
     page_title="Guest Tracker",
     layout="centered"
 )
+
+# -------------------------
+# PASSWORD LOGIN
+# -------------------------
+PASSWORD = "GuestList"
+
+st.title("🔐 Guest App Login")
+
+password = st.text_input("Enter password", type="password")
+
+if password != PASSWORD:
+    st.warning("Incorrect password or no access.")
+    st.stop()
 
 # -------------------------
 # LOAD DATA
@@ -21,7 +34,7 @@ df.columns = df.columns.str.strip()
 df["Guest"] = df["first name"].astype(str) + " " + df["last name"].astype(str)
 
 # -------------------------
-# STORAGE
+# STORAGE SETUP
 # -------------------------
 STATE_FILE = "guests_state.csv"
 UPLOAD_DIR = "uploads"
@@ -42,29 +55,29 @@ else:
 st.title("📋 Guest Tracker")
 
 # -------------------------
-# PROGRESS (BASED ON WRITTEN)
+# PROGRESS BAR
 # -------------------------
 done = state["Card_Written"].sum()
 total = len(state)
 
 st.progress(done / total if total else 0)
-st.write(f"✍️ {done}/{total} written")
+st.write(f" {done}/{total} cards written")
 
 st.markdown("---")
 
 updated_rows = []
 
 # -------------------------
-# MOBILE CARD LIST (NO SWIPE BUTTONS)
+# MAIN LOOP
 # -------------------------
 for i, row in state.iterrows():
 
-    st.subheader(f"👤 {row['Guest']}")
+    st.subheader(f" {row['Guest']}")
 
     safe_key = str(row["Guest"]).replace(" ", "_").replace(".", "")
 
     # -------------------------
-    # IMAGE PATH SAFE
+    # SAFE IMAGE PATH HANDLING
     # -------------------------
     image_path = row.get("Image_Path", "")
     if pd.isna(image_path):
@@ -73,49 +86,63 @@ for i, row in state.iterrows():
         image_path = str(image_path)
 
     # -------------------------
-    # WRITTEN (drives progress)
+    # CARD WRITTEN
     # -------------------------
     written = st.checkbox(
         "✍️ Card Written",
         value=row["Card_Written"],
-        key=f"written_{i}_{safe_key}"
+        key=f"written_{safe_key}_{i}"
     )
 
     # -------------------------
-    # UPLOAD (camera enabled on mobile)
+    # APPROVED
+    # -------------------------
+    approved = st.checkbox(
+        "✔ Approved",
+        value=row["Approved"],
+        key=f"approved_{safe_key}_{i}"
+    )
+
+    # -------------------------
+    # IMAGE UPLOAD
     # -------------------------
     uploaded_file = st.file_uploader(
         "📸 Take / Upload Photo",
         type=["png", "jpg", "jpeg"],
-        key=f"upload_{i}_{safe_key}"
+        key=f"upload_{safe_key}_{i}"
     )
 
     if uploaded_file is not None:
         image_path = os.path.join(
             UPLOAD_DIR,
-            f"{i}_{safe_key}_{uploaded_file.name}"
+            f"{safe_key}_{uploaded_file.name}"
         )
 
         with open(image_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
     # -------------------------
-    # IMAGE PREVIEW (FULL WIDTH)
+    # VIEW + DELETE IMAGE
     # -------------------------
     if image_path and os.path.exists(image_path):
-        st.image(Image.open(image_path), use_container_width=True)
+
+        col1, col2 = st.columns(2)
+
+        if col1.button("👁 View", key=f"view_{safe_key}_{i}"):
+            st.image(image_path, use_container_width=True)
+
+        if col2.button("🗑 Delete", key=f"delete_{safe_key}_{i}"):
+
+            try:
+                os.remove(image_path)
+            except:
+                pass
+
+            image_path = ""
+            st.rerun()
 
     # -------------------------
-    # APPROVED (UNDER PHOTO)
-    # -------------------------
-    approved = st.checkbox(
-        "✔ Approved",
-        value=row["Approved"],
-        key=f"approved_{i}_{safe_key}"
-    )
-
-    # -------------------------
-    # SAVE STATE (AUTO)
+    # SAVE ROW
     # -------------------------
     updated_rows.append({
         "Guest": row["Guest"],
@@ -127,7 +154,7 @@ for i, row in state.iterrows():
     st.markdown("---")
 
 # -------------------------
-# WRITE BACK (AUTO SAVE)
+# SAVE STATE
 # -------------------------
 state = pd.DataFrame(updated_rows)
 state.to_csv(STATE_FILE, index=False)
